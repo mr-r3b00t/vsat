@@ -1,0 +1,91 @@
+# vCenter Security Audit Tool Configuration
+# Copy this file to config.yaml and update with your settings
+
+# vCenter Connection Settings
+vcenter:
+  server: vcenter.example.com
+  port: 443
+  # Username for authentication (SSO format recommended)
+  username: audit_user@vsphere.local
+  # Password can be provided here (not recommended) or via:
+  # - Environment variable: VCENTER_PASSWORD
+  # - Command line prompt
+  # password: your_password_here
+
+# Audit Settings
+audit:
+  # Categories to audit (set to false to skip)
+  categories:
+    vm_security: true
+    host_security: true
+    network_security: true
+    permissions: true
+    vcenter: true
+  
+  # Severity threshold for reporting
+  # Options: CRITICAL, HIGH, MEDIUM, LOW, INFO
+  minimum_severity: INFO
+  
+  # Snapshot age thresholds (in days)
+  snapshot_warning_days: 7
+  snapshot_critical_days: 30
+
+# Report Settings
+report:
+  # Output format: text, json, html
+  format: html
+  
+  # Output directory for reports
+  output_directory: ./reports
+  
+  # Include remediation guidance
+  include_remediation: true
+  
+  # Include references
+  include_references: true
+
+# Notification Settings (optional)
+notifications:
+  # Email notifications
+  email:
+    enabled: false
+    smtp_server: smtp.example.com
+    smtp_port: 587
+    from_address: vcenter-audit@example.com
+    to_addresses:
+      - security-team@example.com
+    # Only send if findings meet severity threshold
+    severity_threshold: HIGH
+  
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_url: https://hooks.slack.com/services/xxx/xxx/xxx
+    severity_threshold: CRITICAL
+
+# Exclusions (optional)
+exclusions:
+  # VMs to exclude from audit (by name pattern)
+  vm_patterns:
+    - "template-*"
+    - "test-*"
+  
+  # Hosts to exclude from audit
+  host_patterns: []
+  
+  # Networks to exclude
+  network_patterns: []
+  
+  # Specific findings to suppress (by title)
+  suppress_findings: []
+
+# Compliance Frameworks (optional)
+compliance:
+  # Map findings to compliance frameworks
+  frameworks:
+    - name: "CIS VMware ESXi Benchmark"
+      enabled: true
+    - name: "NIST 800-53"
+      enabled: false
+    - name: "PCI-DSS"
+      enabled: false

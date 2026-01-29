@@ -1,0 +1,317 @@
+{
+  "framework": "CIS VMware ESXi 8.0 Benchmark v1.0.0",
+  "version": "1.0.0",
+  "mappings": [
+    {
+      "cis_id": "1.1",
+      "title": "Ensure ESXi is properly patched",
+      "finding_titles": ["Unsupported ESXi Version", "ESXi Version Should Be Updated"],
+      "description": "Ensure the latest ESXi patches are installed to protect against known vulnerabilities.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "1.2",
+      "title": "Ensure the Image Profile VIB acceptance level is configured properly",
+      "finding_titles": [],
+      "description": "Ensure only signed VIBs are installed on the host.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "2.1",
+      "title": "Ensure NTP time synchronization is configured properly",
+      "finding_titles": ["NTP Not Configured", "Insufficient NTP Servers"],
+      "description": "Configure NTP for accurate time synchronization.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "2.2",
+      "title": "Ensure the ESXi host firewall is configured to restrict access to services",
+      "finding_titles": ["Firewall Default Incoming Policy Open", "Firewall Rule Allows All IPs"],
+      "description": "Configure firewall rules to restrict access to management services.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "2.3",
+      "title": "Ensure Managed Object Browser (MOB) is disabled",
+      "finding_titles": ["MOB Enabled"],
+      "description": "Disable the Managed Object Browser to prevent unauthorized API access.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "3.1",
+      "title": "Ensure a centralized location is configured to collect ESXi host core dumps",
+      "finding_titles": [],
+      "description": "Configure network core dump collection for troubleshooting.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "3.2",
+      "title": "Ensure remote logging is configured for ESXi hosts",
+      "finding_titles": ["Remote Syslog Not Configured"],
+      "description": "Configure remote syslog server for centralized logging.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "4.1",
+      "title": "Ensure a non-root user account exists for local admin access",
+      "finding_titles": [],
+      "description": "Create non-root accounts for administration.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "4.2",
+      "title": "Ensure passwords are required to be complex",
+      "finding_titles": ["Password Quality Not Configured"],
+      "description": "Configure password complexity requirements.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "4.3",
+      "title": "Ensure the maximum failed login attempts is set to 5",
+      "finding_titles": ["Account Lockout Threshold Too High"],
+      "description": "Configure account lockout after failed login attempts.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "4.4",
+      "title": "Ensure account lockout is set to 15 minutes",
+      "finding_titles": ["Account Unlock Time Too Short"],
+      "description": "Configure account lockout duration.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.1",
+      "title": "Ensure the DCUI timeout is set to 600 seconds or less",
+      "finding_titles": [],
+      "description": "Configure DCUI session timeout.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "5.2",
+      "title": "Ensure the ESXi shell is disabled",
+      "finding_titles": ["ESXi Shell Service Running"],
+      "description": "Disable ESXi Shell unless needed for troubleshooting.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.3",
+      "title": "Ensure SSH is disabled",
+      "finding_titles": ["SSH Service Running"],
+      "description": "Disable SSH unless needed for troubleshooting.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.4",
+      "title": "Ensure the CIM account access is limited",
+      "finding_titles": [],
+      "description": "Restrict CIM account access.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.5",
+      "title": "Ensure Normal Lockdown mode is enabled",
+      "finding_titles": ["Lockdown Mode Disabled"],
+      "description": "Enable lockdown mode to restrict direct host access.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.6",
+      "title": "Ensure the ESXi Shell interactive timeout is set to 300 seconds or less",
+      "finding_titles": ["Shell Timeout Too Long"],
+      "description": "Configure shell session timeout.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "5.7",
+      "title": "Ensure the ESXi Shell timeout is set to 300 seconds or less",
+      "finding_titles": ["Shell Availability Timeout Too Long"],
+      "description": "Configure shell availability timeout.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "6.1",
+      "title": "Ensure bidirectional CHAP authentication for iSCSI traffic is enabled",
+      "finding_titles": [],
+      "description": "Enable CHAP authentication for iSCSI.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "7.1",
+      "title": "Ensure the dvPortgroup Promiscuous Mode policy is set to reject",
+      "finding_titles": ["Promiscuous Mode Enabled", "Promiscuous Mode Enabled on vSwitch", "Promiscuous Mode Enabled on Port Group"],
+      "description": "Disable promiscuous mode on virtual switches.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "7.2",
+      "title": "Ensure the dvPortgroup MAC Address Change policy is set to reject",
+      "finding_titles": ["MAC Address Changes Allowed", "MAC Address Changes Allowed on vSwitch"],
+      "description": "Reject MAC address changes on virtual switches.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "7.3",
+      "title": "Ensure the dvPortgroup Forged Transmits policy is set to reject",
+      "finding_titles": ["Forged Transmits Allowed", "Forged Transmits Allowed on vSwitch"],
+      "description": "Reject forged transmits on virtual switches.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "8.1.1",
+      "title": "Ensure informational messages from the VM to the VMX file are limited",
+      "finding_titles": ["SetInfo Size Unlimited"],
+      "description": "Limit VM log file information exposure.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "8.2.1",
+      "title": "Ensure unnecessary floppy devices are disconnected",
+      "finding_titles": [],
+      "description": "Remove or disconnect unnecessary devices.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "8.2.2",
+      "title": "Ensure unnecessary CD/DVD devices are disconnected",
+      "finding_titles": [],
+      "description": "Remove or disconnect unnecessary devices.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "8.2.3",
+      "title": "Ensure unnecessary parallel ports are disconnected",
+      "finding_titles": [],
+      "description": "Remove or disconnect unnecessary devices.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "8.2.4",
+      "title": "Ensure unnecessary serial ports are disconnected",
+      "finding_titles": [],
+      "description": "Remove or disconnect unnecessary devices.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "8.2.5",
+      "title": "Ensure unnecessary USB devices are disconnected",
+      "finding_titles": [],
+      "description": "Remove or disconnect unnecessary devices.",
+      "level": 2,
+      "scored": false
+    },
+    {
+      "cis_id": "8.3.1",
+      "title": "Ensure copy operations are disabled",
+      "finding_titles": ["Copy/Paste to VM Enabled"],
+      "description": "Disable copy operations between guest and host.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.3.2",
+      "title": "Ensure paste operations are disabled",
+      "finding_titles": ["Copy/Paste from VM Enabled"],
+      "description": "Disable paste operations between guest and host.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.3.3",
+      "title": "Ensure disk shrinking is disabled",
+      "finding_titles": ["Disk Shrinking Enabled"],
+      "description": "Disable disk shrinking to prevent DoS.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.3.4",
+      "title": "Ensure disk wiping is disabled",
+      "finding_titles": ["Disk Wiping Enabled"],
+      "description": "Disable disk wiping to prevent DoS.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.4.1",
+      "title": "Ensure VIX messages from the VM are disabled",
+      "finding_titles": [],
+      "description": "Disable VIX messaging to limit information exposure.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.4.2",
+      "title": "Ensure independent, non-persistent disks are not used",
+      "finding_titles": ["Independent Disk Mode"],
+      "description": "Avoid independent disks that bypass snapshots.",
+      "level": 2,
+      "scored": true
+    },
+    {
+      "cis_id": "8.4.3",
+      "title": "Ensure virtual machines have hardware version 14 or later",
+      "finding_titles": ["Outdated VM Hardware Version"],
+      "description": "Use current hardware versions for security features.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "8.4.4",
+      "title": "Ensure VM console connections are limited",
+      "finding_titles": ["VNC Remote Display Enabled"],
+      "description": "Limit remote console connections.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "8.5.1",
+      "title": "Ensure VMware Tools is installed and running",
+      "finding_titles": ["VMware Tools Not Installed", "VMware Tools Outdated"],
+      "description": "Keep VMware Tools installed and updated.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "8.5.2",
+      "title": "Ensure host information is not sent to guests",
+      "finding_titles": ["Host Info Exposed to Guest"],
+      "description": "Disable host information exposure to VMs.",
+      "level": 1,
+      "scored": true
+    }
+  ],
+  "summary_template": {
+    "total_controls": 40,
+    "levels": {
+      "level_1": 30,
+      "level_2": 10
+    }
+  }
+}
