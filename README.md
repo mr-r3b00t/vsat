@@ -14,6 +14,7 @@ A comprehensive security auditing tool for VMware vCenter environments. Think **
 ## 🎯 Why vSAT?
 
 - **Security-First**: Unlike inventory tools, vSAT focuses purely on security misconfigurations
+- **AD/SSO Auditing**: Identifies Active Directory users and groups with vCenter access, flags risky groups like "Domain Users" or "Domain Admins" with elevated privileges
 - **Compliance Ready**: Built-in CIS ESXi Benchmark mapping for audit reporting
 - **Multiple Outputs**: Text, JSON (for SIEM), and beautiful HTML dashboards
 - **Lightweight**: Single Python script, minimal dependencies
@@ -67,6 +68,20 @@ A comprehensive security auditing tool for VMware vCenter environments. Think **
 | Everyone group has permissions | CRITICAL | VMware Security Best Practices |
 | Excessive admin accounts (>5) | MEDIUM | Security Best Practices |
 | Custom roles with dangerous privileges | MEDIUM | VMware vSphere Security Guide |
+
+### SSO & Active Directory Authentication Audits
+| Check | Severity | Reference |
+|-------|----------|-----------|
+| AD integration detected | INFO | VMware vCenter SSO Best Practices |
+| AD account with Administrator role | HIGH/MEDIUM | VMware vCenter Security Configuration |
+| Excessive AD Administrator accounts (>3) | HIGH | Security Best Practices |
+| Domain Users group with access | CRITICAL | Least Privilege Principle |
+| Domain Admins group with access | HIGH | VMware Security Best Practices |
+| Domain Computers group with access | CRITICAL | Least Privilege Principle |
+| Authenticated Users with access | CRITICAL | Least Privilege Principle |
+| Enterprise Admins with access | HIGH | VMware Security Best Practices |
+| Generic AD group with Admin access | MEDIUM | VMware Security Best Practices |
+| SSO password policy review | INFO | CIS VMware vCenter Benchmark |
 
 ---
 
@@ -227,6 +242,12 @@ VCenterSecurityAuditor
 ├── Permission Audits
 │   ├── _audit_roles()
 │   └── _audit_permissions_assignments()
+├── SSO & AD Authentication Audits
+│   ├── _audit_ad_identity_sources()
+│   ├── _audit_ad_permissions()
+│   ├── _audit_ad_admin_access()
+│   ├── _audit_risky_ad_groups()
+│   └── _audit_sso_password_policy()
 └── Report Generation
     ├── _generate_text_report()
     ├── _generate_json_report()

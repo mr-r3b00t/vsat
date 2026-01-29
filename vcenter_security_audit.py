@@ -908,6 +908,347 @@ class VCenterSecurityAuditor:
             pass
 
     # =========================================================================
+    # SSO AND ACTIVE DIRECTORY AUTHENTICATION AUDITS
+    # =========================================================================
+    
+    def audit_sso_and_authentication(self):
+        """Audit SSO configuration and Active Directory integration."""
+        print("\n[*] Auditing SSO & Active Directory Authentication...")
+        
+        self._audit_ad_identity_sources()
+        self._audit_ad_permissions()
+        self._audit_ad_admin_access()
+        self._audit_risky_ad_groups()
+        self._audit_sso_password_policy()
+    
+    def _is_ad_principal(self, principal: str) -> bool:
+        """Check if a principal is from Active Directory (contains domain)."""
+        # AD principals typically have formats like:
+        # DOMAIN\username, DOMAIN\groupname, user@domain.com
+        if '\\' in principal:
+            return True
+        if '@' in principal and not principal.endswith('@vsphere.local'):
+            return True
+        return False
+    
+    def _extract_domain(self, principal: str) -> str:
+        """Extract domain from AD principal."""
+        if '\\' in principal:
+            return principal.split('\\')[0].upper()
+        if '@' in principal:
+            domain_part = principal.split('@')[1]
+            return domain_part.upper()
+        return ""
+    
+    def _get_role_name(self, role_id: int) -> str:
+        """Get role name from role ID."""
+        try:
+            auth_manager = self.content.authorizationManager
+            for role in auth_manager.roleList:
+                if role.roleId == role_id:
+                    return role.name
+            return f"Unknown (ID: {role_id})"
+        except:
+            return f"Unknown (ID: {role_id})"
+    
+    def _is_high_privilege_role(self, role_id: int) -> bool:
+        """Check if a role has high privileges."""
+        # Built-in high privilege roles
+        # -1 = Administrator, -2 = Read-only (safe), -3 = View (safe), -4 = Anonymous (safe), -5 = No access
+        if role_id == -1:  # Administrator
+            return True
+        
+        try:
+            auth_manager = self.content.authorizationManager
+            for role in auth_manager.roleList:
+                if role.roleId == role_id:
+                    # Check for dangerous privileges
+                    dangerous_privs = [
+                        'VirtualMachine.Interact.ConsoleInteract',
+                        'VirtualMachine.Interact.PowerOn',
+                        'VirtualMachine.Interact.PowerOff',
+                        'VirtualMachine.Interact.Reset',
+                        'VirtualMachine.Config.Settings',
+                        'VirtualMachine.Config.Resource',
+                        'VirtualMachine.Config.AdvancedConfig',
+                        'VirtualMachine.Provisioning.Clone',
+                        'VirtualMachine.Provisioning.DeployTemplate',
+                        'VirtualMachine.Inventory.Delete',
+                        'VirtualMachine.Inventory.Create',
+                        'Host.Config.Settings',
+                        'Host.Config.Network',
+                        'Host.Config.Storage',
+                        'Host.Config.Security',
+                        'Host.Config.AdvancedConfig',
+                        'Global.Settings',
+                        'Global.ManageCustomFields',
+                        'Authorization.ModifyPermissions',
+                        'Authorization.ModifyRoles',
+                        'Cryptographer.ManageKeys',
+                        'Cryptographer.ManageEncryptedVM',
+                        'Sessions.TerminateSession',
+                        'Extension.Register',
+                        'Datastore.Delete',
+                        'Datastore.Config',
+                        'Network.Config',
+                        'Network.Delete',
+                        'Folder.Delete',
+                        'Resource.AssignVMToPool',
+                    ]
+                    for priv in role.privilege:
+                        if priv in dangerous_privs:
+                            return True
+            return False
+        except:
+            return False
+    
+    def _audit_ad_identity_sources(self):
+        """Check for Active Directory identity sources configured in SSO."""
+        try:
+            auth_manager = self.content.authorizationManager
+            permissions = auth_manager.RetrieveAllPermissions()
+            
+            # Collect unique domains from principals
+            ad_domains = set()
+            for perm in permissions:
+                if self._is_ad_principal(perm.principal):
+                    domain = self._extract_domain(perm.principal)
+                    if domain:
+                        ad_domains.add(domain)
+            
+            if ad_domains:
+                # AD is integrated - this is informational but important to note
+                domains_str = ', '.join(sorted(ad_domains))
+                self.add_finding(SecurityFinding(
+                    category="SSO & Authentication",
+                    severity=SecurityFinding.INFO,
+                    title="Active Directory Integration Detected",
+                    description=f"vCenter is integrated with Active Directory domain(s): {domains_str}. "
+                               f"AD users and groups can authenticate to vCenter.",
+                    affected_object="vCenter SSO",
+                    remediation="Ensure AD integration is intentional and properly secured. "
+                               "Review AD accounts with vCenter access regularly.",
+                    reference="VMware vCenter SSO Best Practices"
+                ))
+                
+                # Store for other checks
+                self._ad_domains = ad_domains
+            else:
+                self._ad_domains = set()
+                self.add_finding(SecurityFinding(
+                    category="SSO & Authentication",
+                    severity=SecurityFinding.INFO,
+                    title="No Active Directory Integration Detected",
+                    description="No Active Directory domain users/groups found with vCenter permissions. "
+                               "Only local SSO accounts appear to have access.",
+                    affected_object="vCenter SSO",
+                    remediation="Consider if AD integration is needed for centralized identity management.",
+                    reference="VMware vCenter SSO Best Practices"
+                ))
+        except Exception as e:
+            print(f"    [-] Error checking AD identity sources: {e}")
+            self._ad_domains = set()
+    
+    def _audit_ad_permissions(self):
+        """Audit all AD users and groups with vCenter permissions."""
+        try:
+            auth_manager = self.content.authorizationManager
+            permissions = auth_manager.RetrieveAllPermissions()
+            
+            ad_permissions = []
+            
+            for perm in permissions:
+                if self._is_ad_principal(perm.principal):
+                    role_name = self._get_role_name(perm.roleId)
+                    is_high_priv = self._is_high_privilege_role(perm.roleId)
+                    
+                    ad_permissions.append({
+                        'principal': perm.principal,
+                        'role': role_name,
+                        'role_id': perm.roleId,
+                        'propagate': perm.propagate,
+                        'is_high_privilege': is_high_priv,
+                        'entity': str(perm.entity) if perm.entity else 'Root'
+                    })
+            
+            # Report summary of AD access
+            if ad_permissions:
+                high_priv_count = sum(1 for p in ad_permissions if p['is_high_privilege'])
+                
+                self.add_finding(SecurityFinding(
+                    category="SSO & Authentication",
+                    severity=SecurityFinding.INFO,
+                    title="Active Directory Accounts with vCenter Access",
+                    description=f"Found {len(ad_permissions)} AD user(s)/group(s) with vCenter permissions. "
+                               f"{high_priv_count} have high-privilege roles.",
+                    affected_object="vCenter Permissions",
+                    remediation="Regularly review AD accounts with vCenter access. "
+                               "Implement least-privilege access principles.",
+                    reference="VMware Security Best Practices"
+                ))
+        except Exception as e:
+            print(f"    [-] Error auditing AD permissions: {e}")
+    
+    def _audit_ad_admin_access(self):
+        """Check for AD users/groups with Administrator access."""
+        try:
+            auth_manager = self.content.authorizationManager
+            permissions = auth_manager.RetrieveAllPermissions()
+            
+            ad_admins = []
+            
+            for perm in permissions:
+                if self._is_ad_principal(perm.principal):
+                    # Check for Administrator role (roleId = -1)
+                    if perm.roleId == -1:
+                        ad_admins.append({
+                            'principal': perm.principal,
+                            'propagate': perm.propagate,
+                            'entity': perm.entity
+                        })
+            
+            # Flag each AD admin
+            for admin in ad_admins:
+                # Determine severity based on scope
+                if admin['propagate'] and admin['entity'] == self.content.rootFolder:
+                    severity = SecurityFinding.HIGH
+                    scope = "root folder with propagation (full vCenter admin)"
+                elif admin['propagate']:
+                    severity = SecurityFinding.HIGH
+                    scope = "with propagating permissions"
+                else:
+                    severity = SecurityFinding.MEDIUM
+                    scope = "on specific objects"
+                
+                self.add_finding(SecurityFinding(
+                    category="SSO & Authentication",
+                    severity=severity,
+                    title="AD Account with Administrator Role",
+                    description=f"AD principal '{admin['principal']}' has Administrator role {scope}. "
+                               f"This grants full control over vCenter resources.",
+                    affected_object=admin['principal'],
+                    remediation="Review if Administrator access is necessary. "
+                               "Consider using more restrictive custom roles. "
+                               "Ensure AD account/group membership is tightly controlled.",
+                    reference="VMware vCenter Security Configuration Guide"
+                ))
+            
+            # Summary finding if multiple AD admins
+            if len(ad_admins) > 3:
+                self.add_finding(SecurityFinding(
+                    category="SSO & Authentication",
+                    severity=SecurityFinding.HIGH,
+                    title="Excessive AD Administrator Accounts",
+                    description=f"Found {len(ad_admins)} AD accounts/groups with Administrator role. "
+                               f"This increases the attack surface significantly.",
+                    affected_object="vCenter Permissions",
+                    remediation="Reduce the number of AD accounts with Administrator access. "
+                               "Use dedicated service accounts and role-based access control.",
+                    reference="Security Best Practices - Least Privilege"
+                ))
+        except Exception as e:
+            print(f"    [-] Error auditing AD admin access: {e}")
+    
+    def _audit_risky_ad_groups(self):
+        """Check for risky AD groups with vCenter access."""
+        try:
+            auth_manager = self.content.authorizationManager
+            permissions = auth_manager.RetrieveAllPermissions()
+            
+            # Risky AD groups that should never have vCenter access
+            risky_groups_patterns = [
+                ('domain users', SecurityFinding.CRITICAL, 'All domain users would have access'),
+                ('domain computers', SecurityFinding.CRITICAL, 'All domain computers would have access'),
+                ('authenticated users', SecurityFinding.CRITICAL, 'All authenticated users would have access'),
+                ('everyone', SecurityFinding.CRITICAL, 'Everyone would have access'),
+                ('users', SecurityFinding.HIGH, 'Very broad group - likely includes many users'),
+                ('domain admins', SecurityFinding.HIGH, 'Grants vCenter access to all Domain Admins'),
+                ('enterprise admins', SecurityFinding.HIGH, 'Grants vCenter access to all Enterprise Admins'),
+                ('schema admins', SecurityFinding.MEDIUM, 'Schema Admins typically do not need vCenter access'),
+                ('account operators', SecurityFinding.MEDIUM, 'Account Operators typically do not need vCenter access'),
+                ('backup operators', SecurityFinding.MEDIUM, 'Backup Operators typically do not need vCenter access'),
+                ('server operators', SecurityFinding.MEDIUM, 'Server Operators typically do not need vCenter access'),
+                ('print operators', SecurityFinding.LOW, 'Print Operators do not need vCenter access'),
+                ('guests', SecurityFinding.CRITICAL, 'Guest accounts should never have vCenter access'),
+            ]
+            
+            for perm in permissions:
+                principal_lower = perm.principal.lower()
+                
+                for pattern, severity, reason in risky_groups_patterns:
+                    # Check if the principal contains the risky group pattern
+                    if pattern in principal_lower:
+                        role_name = self._get_role_name(perm.roleId)
+                        is_admin = perm.roleId == -1
+                        
+                        # Escalate severity if they have admin role
+                        if is_admin and severity != SecurityFinding.CRITICAL:
+                            severity = SecurityFinding.CRITICAL
+                        
+                        self.add_finding(SecurityFinding(
+                            category="SSO & Authentication",
+                            severity=severity,
+                            title=f"Risky AD Group with vCenter Access",
+                            description=f"AD group '{perm.principal}' has vCenter access with role '{role_name}'. "
+                                       f"Risk: {reason}. "
+                                       f"{'This group has ADMINISTRATOR access!' if is_admin else ''}",
+                            affected_object=perm.principal,
+                            remediation=f"Remove permissions for '{perm.principal}'. "
+                                       f"Create specific AD security groups for vCenter access with appropriate membership.",
+                            reference="VMware Security Best Practices - Least Privilege"
+                        ))
+                        break  # Only report once per principal
+            
+            # Check for AD groups with high privileges
+            for perm in permissions:
+                if self._is_ad_principal(perm.principal) and self._is_high_privilege_role(perm.roleId):
+                    # Check if it looks like a group (heuristic: no @, contains common group indicators)
+                    principal_lower = perm.principal.lower()
+                    group_indicators = ['group', 'team', 'admins', 'operators', 'users', 'staff', 
+                                       'it-', 'infra', 'vmware', 'virtual', 'server']
+                    
+                    is_likely_group = any(indicator in principal_lower for indicator in group_indicators)
+                    
+                    if is_likely_group and perm.roleId == -1:
+                        # Already covered by specific risky group check above, but flag unknown groups
+                        already_flagged = any(pattern in principal_lower for pattern, _, _ in risky_groups_patterns)
+                        if not already_flagged:
+                            self.add_finding(SecurityFinding(
+                                category="SSO & Authentication",
+                                severity=SecurityFinding.MEDIUM,
+                                title="AD Group with Administrator Access",
+                                description=f"AD group '{perm.principal}' has Administrator role. "
+                                           f"Verify this group's membership is tightly controlled.",
+                                affected_object=perm.principal,
+                                remediation="Review group membership in Active Directory. "
+                                           "Ensure only authorized users are members. "
+                                           "Consider using more restrictive roles.",
+                                reference="VMware Security Best Practices"
+                            ))
+        except Exception as e:
+            print(f"    [-] Error auditing risky AD groups: {e}")
+    
+    def _audit_sso_password_policy(self):
+        """Audit SSO password policy settings (informational check)."""
+        try:
+            # This is primarily accessible via vCenter REST API
+            # For pyVmomi, we'll add an informational reminder
+            self.add_finding(SecurityFinding(
+                category="SSO & Authentication",
+                severity=SecurityFinding.INFO,
+                title="Review SSO Password Policy",
+                description="Verify that vCenter SSO password policy meets security requirements: "
+                           "minimum length 15+ characters, complexity requirements, "
+                           "account lockout after 5 failed attempts, 90-day password expiration.",
+                affected_object="vCenter SSO",
+                remediation="Review SSO password policy in vSphere Client > Administration > "
+                           "Single Sign On > Configuration > Local Accounts > Password Policy.",
+                reference="CIS VMware vCenter Benchmark"
+            ))
+        except:
+            pass
+
+    # =========================================================================
     # VCENTER SERVER AUDITS
     # =========================================================================
     
@@ -1235,6 +1576,7 @@ class VCenterSecurityAuditor:
             self.audit_vm_security()
             self.audit_network_security()
             self.audit_permissions()
+            self.audit_sso_and_authentication()
             
             print("\n" + "=" * 60)
             print("AUDIT COMPLETE")

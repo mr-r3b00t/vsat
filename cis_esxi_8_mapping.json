@@ -305,12 +305,52 @@
       "description": "Disable host information exposure to VMs.",
       "level": 1,
       "scored": true
+    },
+    {
+      "cis_id": "9.1",
+      "title": "Ensure vCenter SSO password policies meet security requirements",
+      "finding_titles": ["Review SSO Password Policy"],
+      "description": "Configure SSO password policy with appropriate complexity and expiration.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "9.2",
+      "title": "Ensure only authorized identity sources are configured",
+      "finding_titles": ["Active Directory Integration Detected"],
+      "description": "Review configured identity sources and ensure they are authorized.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "9.3",
+      "title": "Ensure broad AD groups do not have vCenter access",
+      "finding_titles": ["Risky AD Group with vCenter Access"],
+      "description": "Do not grant vCenter access to broad AD groups like Domain Users.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "9.4",
+      "title": "Limit the number of AD accounts with Administrator role",
+      "finding_titles": ["AD Account with Administrator Role", "Excessive AD Administrator Accounts"],
+      "description": "Minimize the number of AD accounts with full Administrator access.",
+      "level": 1,
+      "scored": true
+    },
+    {
+      "cis_id": "9.5",
+      "title": "Ensure AD groups with vCenter access are tightly controlled",
+      "finding_titles": ["AD Group with Administrator Access"],
+      "description": "Review membership of AD groups that have vCenter access.",
+      "level": 1,
+      "scored": true
     }
   ],
   "summary_template": {
-    "total_controls": 40,
+    "total_controls": 45,
     "levels": {
-      "level_1": 30,
+      "level_1": 35,
       "level_2": 10
     }
   }
