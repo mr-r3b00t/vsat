@@ -5,9 +5,16 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![VMware](https://img.shields.io/badge/VMware-vCenter%206.x%2F7.x%2F8.x-orange?logo=vmware)](https://www.vmware.com/)
 
-A comprehensive security auditing tool for VMware vCenter environments. Think **RVTools**, but focused on **security**!
+A comprehensive security auditing tool for VMware environments. Think **RVTools**, but focused on **security**!
 
-> **40+ security checks** mapped to CIS Benchmarks, VMware Hardening Guides, and industry best practices.
+> **50+ security checks** mapped to CIS Benchmarks, VMware Hardening Guides, and industry best practices.
+
+## 📦 Included Tools
+
+| Tool | Description |
+|------|-------------|
+| `vcenter_security_audit.py` | Audit vCenter Server and all managed hosts/VMs |
+| `esxi_security_audit.py` | Audit standalone ESXi hosts (not managed by vCenter) |
 
 ---
 
@@ -164,6 +171,81 @@ Options:
 
 ---
 
+## 🖥️ ESXi Standalone Scanner
+
+For ESXi hosts **NOT managed by vCenter**, use the dedicated `esxi_security_audit.py` scanner.
+
+### ESXi Scanner Features
+
+- **Multi-host scanning** - Scan multiple hosts in parallel
+- **Direct host connection** - No vCenter required
+- **Same security checks** - Services, firewall, network, VMs, etc.
+- **Batch scanning** - Provide hosts via file or command line
+
+### ESXi Scanner Usage
+
+```bash
+# Scan single host (prompts for password)
+python esxi_security_audit.py -s esxi01.example.com
+
+# Scan with explicit credentials
+python esxi_security_audit.py -s esxi01.example.com -u root -p 'password'
+
+# Scan multiple hosts (comma-separated)
+python esxi_security_audit.py -s esxi01.example.com,esxi02.example.com,esxi03.example.com -u root
+
+# Scan hosts from file
+python esxi_security_audit.py -f hosts.txt -u root
+
+# Generate HTML reports for multiple hosts
+python esxi_security_audit.py -f hosts.txt -u root -o html --output-dir ./reports
+```
+
+### ESXi Hosts File Format
+
+```
+# hosts.txt - one host per line
+esxi01.example.com
+esxi02.example.com
+192.168.1.100
+# Comments are ignored
+esxi03.example.com
+```
+
+### ESXi Scanner Command Line Options
+
+```
+usage: esxi_security_audit.py [-h] [-s SERVER] [-f FILE] [-u USER] [-p PASSWORD]
+                               [-o {text,json,html}] [--port PORT] [--output-dir DIR]
+
+Options:
+  -s, --server      ESXi host(s) - comma-separated for multiple
+  -f, --file        File containing list of ESXi hosts (one per line)
+  -u, --user        Username (default: root)
+  -p, --password    Password (will prompt if not provided)
+  -o, --output      Output format: text, json, or html (default: text)
+  --port            ESXi port (default: 443)
+  --output-dir      Directory to save individual reports (for multi-host scans)
+```
+
+### ESXi Security Checks
+
+| Category | Checks |
+|----------|--------|
+| **Version & Patches** | ESXi version, VIB acceptance level |
+| **Services** | SSH, Shell, SNMP, SLP, CIM server |
+| **Firewall** | Default policies, overly permissive rules |
+| **Access Control** | Lockdown mode, user accounts |
+| **Time Sync** | NTP configuration, service status |
+| **Logging** | Remote syslog, log persistence |
+| **Network** | vSwitch security, promiscuous mode, MAC changes, forged transmits |
+| **Storage** | iSCSI CHAP authentication |
+| **VMs** | Snapshots, hardware version, VNC, isolation settings |
+| **Certificates** | SSL certificate expiration |
+| **Advanced Settings** | Shell timeouts, MOB, password policy, TPS salting |
+
+---
+
 ## 📊 Output Formats
 
 ### Text Report (Default)
@@ -243,14 +325,15 @@ For complete auditing, these additional permissions help:
 
 ```
 vsat/
-├── vcenter_security_audit.py    # Main audit tool
+├── vcenter_security_audit.py    # vCenter audit tool (manages multiple hosts via vCenter)
+├── esxi_security_audit.py       # Standalone ESXi host scanner
 ├── scheduled_scan.py            # Scheduled scanning wrapper
 ├── requirements.txt             # Python dependencies
 ├── config.yaml.example          # Configuration template
 └── cis_esxi_8_mapping.json      # CIS Benchmark mapping
 ```
 
-### Code Structure
+### vCenter Auditor Structure
 ```
 VCenterSecurityAuditor
 ├── VM Security Audits
@@ -282,6 +365,27 @@ VCenterSecurityAuditor
 │   ├── _audit_ad_admin_access()
 │   ├── _audit_risky_ad_groups()
 │   └── _audit_sso_password_policy()
+└── Report Generation
+    ├── _generate_text_report()
+    ├── _generate_json_report()
+    └── _generate_html_report()
+```
+
+### ESXi Standalone Auditor Structure
+```
+ESXiSecurityAuditor
+├── audit_version_and_patches()
+├── audit_services()
+├── audit_firewall()
+├── audit_lockdown_mode()
+├── audit_ntp()
+├── audit_syslog()
+├── audit_advanced_settings()
+├── audit_network_security()
+├── audit_storage_security()
+├── audit_vm_security()
+├── audit_users()
+├── audit_certificates()
 └── Report Generation
     ├── _generate_text_report()
     ├── _generate_json_report()
