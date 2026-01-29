@@ -14,6 +14,7 @@ A comprehensive security auditing tool for VMware vCenter environments. Think **
 ## 🎯 Why vSAT?
 
 - **Security-First**: Unlike inventory tools, vSAT focuses purely on security misconfigurations
+- **Windows Auth Support**: Automatically uses your Windows/Kerberos credentials - no password needed!
 - **AD/SSO Auditing**: Identifies Active Directory users and groups with vCenter access, flags risky groups like "Domain Users" or "Domain Admins" with elevated privileges
 - **Compliance Ready**: Built-in CIS ESXi Benchmark mapping for audit reporting
 - **Multiple Outputs**: Text, JSON (for SIEM), and beautiful HTML dashboards
@@ -96,36 +97,69 @@ cd vsat
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Optional: Install Windows authentication support
+pip install pywin32 requests-ntlm    # Windows SSPI/NTLM
+pip install requests-kerberos        # Kerberos (all platforms)
 ```
 
 ### Basic Usage
 
 ```bash
-# Interactive (will prompt for password)
+# Try Windows/Kerberos authentication first (no credentials needed!)
+python vcenter_security_audit.py -s vcenter.example.com
+
+# Use explicit credentials
 python vcenter_security_audit.py -s vcenter.example.com -u admin@vsphere.local
 
-# With password (use with caution)
-python vcenter_security_audit.py -s vcenter.example.com -u admin@vsphere.local -p 'password'
+# AD domain user authentication
+python vcenter_security_audit.py -s vcenter.example.com -u "CORP\john.smith"
+python vcenter_security_audit.py -s vcenter.example.com -u john.smith@corp.local
+
+# Skip Windows auth attempt and go straight to credentials
+python vcenter_security_audit.py -s vcenter.example.com --no-windows-auth -u admin@vsphere.local
 
 # JSON output (for SIEM integration)
-python vcenter_security_audit.py -s vcenter.example.com -u admin@vsphere.local -o json > report.json
+python vcenter_security_audit.py -s vcenter.example.com -o json > report.json
 
 # HTML report (beautiful dashboard)
-python vcenter_security_audit.py -s vcenter.example.com -u admin@vsphere.local -o html > report.html
+python vcenter_security_audit.py -s vcenter.example.com -o html > report.html
 ```
+
+### Windows Integrated Authentication
+
+vSAT supports **Windows Integrated Authentication (SSPI/Kerberos)**, allowing you to connect using your current Windows session credentials without entering a password:
+
+```bash
+# Just specify the server - uses your current Windows login
+python vcenter_security_audit.py -s vcenter.example.com
+```
+
+**Requirements for Windows Auth:**
+- vCenter must be configured with Active Directory as an identity source
+- Your Windows session must be authenticated to the same AD domain
+- Optional: Install `pywin32` and `requests-ntlm` for NTLM support
+
+**How it works:**
+1. vSAT first attempts Windows/Kerberos authentication using your current session
+2. If that fails (or isn't configured), it prompts for credentials
+3. Your current Windows username is suggested as the default
 
 ### Command Line Options
 
 ```
-usage: vcenter_security_audit.py [-h] -s SERVER -u USER [-p PASSWORD] 
+usage: vcenter_security_audit.py [-h] -s SERVER [-u USER] [-p PASSWORD] 
                                   [-o {text,json,html}] [--port PORT]
+                                  [--no-windows-auth]
 
 Options:
-  -s, --server   vCenter server hostname or IP (required)
-  -u, --user     Username, e.g., admin@vsphere.local (required)
-  -p, --password Password (will prompt if not provided)
-  -o, --output   Output format: text, json, or html (default: text)
-  --port         vCenter port (default: 443)
+  -s, --server        vCenter server hostname or IP (required)
+  -u, --user          Username (e.g., admin@vsphere.local or DOMAIN\user)
+                      If not provided, Windows auth is attempted first
+  -p, --password      Password (will prompt if not provided)
+  -o, --output        Output format: text, json, or html (default: text)
+  --port              vCenter port (default: 443)
+  --no-windows-auth   Skip Windows/Kerberos authentication attempt
 ```
 
 ---

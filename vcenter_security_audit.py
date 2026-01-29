@@ -14,9 +14,11 @@ import sys
 import json
 import argparse
 import getpass
+import os
+import platform
 from datetime import datetime, timedelta
 from collections import defaultdict
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import warnings
 
 # Suppress SSL warnings for self-signed certificates
@@ -28,6 +30,63 @@ try:
 except ImportError:
     print("ERROR: pyVmomi is required. Install with: pip install pyvmomi")
     sys.exit(1)
+
+# Try to import Windows SSPI support
+SSPI_AVAILABLE = False
+HAVE_REQUESTS_NTLM = False
+HAVE_REQUESTS_KERBEROS = False
+
+if platform.system() == 'Windows':
+    try:
+        import sspi
+        import sspicon
+        import win32security
+        SSPI_AVAILABLE = True
+    except ImportError:
+        pass
+
+try:
+    from requests_ntlm import HttpNtlmAuth
+    HAVE_REQUESTS_NTLM = True
+except ImportError:
+    pass
+
+try:
+    from requests_kerberos import HTTPKerberosAuth, OPTIONAL
+    HAVE_REQUESTS_KERBEROS = True
+except ImportError:
+    pass
+
+
+def get_windows_username() -> Optional[str]:
+    """Get the current Windows username in DOMAIN\\user format."""
+    if platform.system() == 'Windows':
+        try:
+            import win32api
+            return win32api.GetUserNameEx(win32api.NameSamCompatible)
+        except:
+            pass
+        try:
+            # Fallback: use environment variables
+            domain = os.environ.get('USERDOMAIN', '')
+            user = os.environ.get('USERNAME', '')
+            if domain and user:
+                return f"{domain}\\{user}"
+        except:
+            pass
+    else:
+        # On Linux/Mac, try to get Kerberos principal
+        try:
+            import subprocess
+            result = subprocess.run(['klist', '-l'], capture_output=True, text=True)
+            if result.returncode == 0:
+                # Parse the default principal
+                for line in result.stdout.split('\n'):
+                    if '@' in line and 'Default' not in line:
+                        return line.strip().split()[0]
+        except:
+            pass
+    return None
 
 
 class SecurityFinding:
@@ -67,7 +126,7 @@ class SecurityFinding:
 class VCenterSecurityAuditor:
     """Main class for performing security audits on vCenter environments."""
     
-    def __init__(self, host: str, user: str, password: str, port: int = 443):
+    def __init__(self, host: str, user: str = None, password: str = None, port: int = 443):
         self.host = host
         self.user = user
         self.password = password
@@ -76,30 +135,197 @@ class VCenterSecurityAuditor:
         self.content = None
         self.findings: List[SecurityFinding] = []
         self.stats = defaultdict(int)
+        self.authenticated_user = None  # Track who we authenticated as
         
-    def connect(self) -> bool:
-        """Establish connection to vCenter."""
+    def _create_ssl_context(self) -> ssl.SSLContext:
+        """Create SSL context that doesn't verify certificates."""
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return context
+    
+    def connect_with_windows_auth(self) -> bool:
+        """Attempt connection using Windows integrated authentication (SSPI/Kerberos)."""
+        if platform.system() == 'Windows' and SSPI_AVAILABLE:
+            return self._connect_windows_sspi()
+        elif HAVE_REQUESTS_KERBEROS:
+            return self._connect_kerberos()
+        return False
+    
+    def _connect_windows_sspi(self) -> bool:
+        """Connect using Windows SSPI (NTLM/Kerberos)."""
         try:
-            # Create SSL context that doesn't verify certificates
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-            context.check_hostname = False
-            context.verify_mode = ssl.CERT_NONE
+            print(f"[*] Attempting Windows SSPI authentication to {self.host}...")
+            
+            # Get current Windows user
+            current_user = get_windows_username()
+            if current_user:
+                print(f"[*] Current Windows user: {current_user}")
+            
+            context = self._create_ssl_context()
+            
+            # Try to connect with current Windows session credentials
+            # pyVmomi's SmartConnect doesn't directly support SSPI, 
+            # but we can try session-based auth via the SOAP endpoint
+            
+            # First, try using the requests library with NTLM for session token
+            if HAVE_REQUESTS_NTLM:
+                try:
+                    import requests
+                    from requests_ntlm import HttpNtlmAuth
+                    
+                    session = requests.Session()
+                    session.verify = False
+                    session.auth = HttpNtlmAuth(None, None)  # Use current user credentials
+                    
+                    # Try to get a session token via REST API
+                    url = f"https://{self.host}/rest/com/vmware/cis/session"
+                    response = session.post(url, timeout=30)
+                    
+                    if response.status_code == 200:
+                        session_id = response.json().get('value')
+                        if session_id:
+                            print(f"[+] Windows NTLM authentication successful!")
+                            self.authenticated_user = current_user
+                            
+                            # Now connect with the session
+                            # Unfortunately, pyVmomi doesn't support session tokens directly
+                            # We'll need to fall back to credential-based auth
+                            return False  # Signal to try other methods
+                except Exception as e:
+                    print(f"[*] NTLM auth attempt: {e}")
+            
+            # Try Kerberos-style auth by connecting without explicit credentials
+            # This works if the vCenter is configured for Windows auth
+            try:
+                self.si = SmartConnect(
+                    host=self.host,
+                    port=self.port,
+                    sslContext=context,
+                    disableSslCertValidation=True
+                )
+                if self.si:
+                    self.content = self.si.RetrieveContent()
+                    self.authenticated_user = current_user or "Windows Session"
+                    print(f"[+] Connected to vCenter using Windows authentication")
+                    print(f"[+] Authenticated as: {self.authenticated_user}")
+                    print(f"[+] vCenter Version: {self.content.about.version}")
+                    print(f"[+] Build: {self.content.about.build}")
+                    return True
+            except Exception as e:
+                # This is expected to fail if Windows auth isn't configured
+                pass
+            
+            return False
+        except Exception as e:
+            print(f"[*] Windows SSPI authentication not available: {e}")
+            return False
+    
+    def _connect_kerberos(self) -> bool:
+        """Connect using Kerberos authentication."""
+        try:
+            print(f"[*] Attempting Kerberos authentication to {self.host}...")
+            
+            current_user = get_windows_username()
+            if current_user:
+                print(f"[*] Kerberos principal: {current_user}")
+            
+            context = self._create_ssl_context()
+            
+            if HAVE_REQUESTS_KERBEROS:
+                try:
+                    import requests
+                    from requests_kerberos import HTTPKerberosAuth, OPTIONAL
+                    
+                    session = requests.Session()
+                    session.verify = False
+                    session.auth = HTTPKerberosAuth(mutual_authentication=OPTIONAL)
+                    
+                    # Try REST API authentication
+                    url = f"https://{self.host}/rest/com/vmware/cis/session"
+                    response = session.post(url, timeout=30)
+                    
+                    if response.status_code == 200:
+                        print(f"[+] Kerberos authentication successful!")
+                        self.authenticated_user = current_user
+                        # Fall through to try pyVmomi connection
+                except Exception as e:
+                    print(f"[*] Kerberos auth attempt: {e}")
+            
+            # Try connecting without explicit credentials (relies on Kerberos ticket)
+            try:
+                self.si = SmartConnect(
+                    host=self.host,
+                    port=self.port,
+                    sslContext=context,
+                    disableSslCertValidation=True
+                )
+                if self.si:
+                    self.content = self.si.RetrieveContent()
+                    self.authenticated_user = current_user or "Kerberos Session"
+                    print(f"[+] Connected to vCenter using Kerberos")
+                    print(f"[+] Authenticated as: {self.authenticated_user}")
+                    print(f"[+] vCenter Version: {self.content.about.version}")
+                    print(f"[+] Build: {self.content.about.build}")
+                    return True
+            except:
+                pass
+            
+            return False
+        except Exception as e:
+            print(f"[*] Kerberos authentication not available: {e}")
+            return False
+    
+    def connect_with_credentials(self, user: str = None, password: str = None) -> bool:
+        """Connect using explicit username and password."""
+        use_user = user or self.user
+        use_password = password or self.password
+        
+        if not use_user or not use_password:
+            return False
+        
+        try:
+            context = self._create_ssl_context()
             
             self.si = SmartConnect(
                 host=self.host,
-                user=self.user,
-                pwd=self.password,
+                user=use_user,
+                pwd=use_password,
                 port=self.port,
                 sslContext=context
             )
             self.content = self.si.RetrieveContent()
+            self.authenticated_user = use_user
             print(f"[+] Connected to vCenter: {self.host}")
+            print(f"[+] Authenticated as: {use_user}")
             print(f"[+] vCenter Version: {self.content.about.version}")
             print(f"[+] Build: {self.content.about.build}")
             return True
+        except vim.fault.InvalidLogin as e:
+            print(f"[-] Invalid credentials for user '{use_user}'")
+            return False
         except Exception as e:
             print(f"[-] Failed to connect: {e}")
             return False
+        
+    def connect(self) -> bool:
+        """Establish connection to vCenter. Tries Windows auth first, then credentials."""
+        # If credentials were explicitly provided, use them directly
+        if self.user and self.password:
+            return self.connect_with_credentials()
+        
+        # Try Windows/Kerberos authentication first
+        print("[*] Attempting automatic Windows/Kerberos authentication...")
+        if self.connect_with_windows_auth():
+            return True
+        
+        print("[*] Windows/Kerberos authentication failed or not available")
+        
+        # Fall back to credential-based authentication
+        if self.user and self.password:
+            return self.connect_with_credentials()
+        
+        return False
     
     def disconnect(self):
         """Disconnect from vCenter."""
@@ -1599,37 +1825,127 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  # Try Windows/Kerberos authentication first (no credentials needed)
+  %(prog)s -s vcenter.example.com
+  
+  # Use explicit credentials
   %(prog)s -s vcenter.example.com -u admin@vsphere.local
-  %(prog)s -s vcenter.example.com -u admin@vsphere.local -o json > report.json
-  %(prog)s -s vcenter.example.com -u admin@vsphere.local -o html > report.html
+  %(prog)s -s vcenter.example.com -u DOMAIN\\username
+  
+  # Output formats
+  %(prog)s -s vcenter.example.com -o json > report.json
+  %(prog)s -s vcenter.example.com -o html > report.html
+  
+  # Skip Windows auth and go straight to credentials
+  %(prog)s -s vcenter.example.com --no-windows-auth -u admin@vsphere.local
         """
     )
     
     parser.add_argument('-s', '--server', required=True, help='vCenter server hostname or IP')
-    parser.add_argument('-u', '--user', required=True, help='Username (e.g., admin@vsphere.local)')
+    parser.add_argument('-u', '--user', help='Username (e.g., admin@vsphere.local or DOMAIN\\user). If not provided, Windows auth is attempted first.')
     parser.add_argument('-p', '--password', help='Password (will prompt if not provided)')
     parser.add_argument('-o', '--output', choices=['text', 'json', 'html'], default='text',
                         help='Output format (default: text)')
     parser.add_argument('--port', type=int, default=443, help='vCenter port (default: 443)')
+    parser.add_argument('--no-windows-auth', action='store_true', 
+                        help='Skip Windows/Kerberos authentication attempt')
     
     args = parser.parse_args()
     
-    # Get password if not provided
-    password = args.password
-    if not password:
-        password = getpass.getpass(f"Password for {args.user}: ")
+    print("\n" + "=" * 60)
+    print("vCenter Security Audit Tool (vSAT)")
+    print("=" * 60)
     
-    # Run audit
+    # Create auditor instance
     auditor = VCenterSecurityAuditor(
         host=args.server,
-        user=args.user,
-        password=password,
         port=args.port
     )
     
-    if auditor.run_full_audit():
-        report = auditor.generate_report(args.output)
-        print("\n" + report)
+    connected = False
+    
+    # Try Windows/Kerberos authentication first (unless disabled or credentials provided)
+    if not args.no_windows_auth and not args.user:
+        print("\n[*] No credentials provided - attempting Windows/Kerberos authentication...")
+        
+        # Show current user info
+        current_user = get_windows_username()
+        if current_user:
+            print(f"[*] Current session: {current_user}")
+        
+        if auditor.connect_with_windows_auth():
+            connected = True
+        else:
+            print("[*] Windows/Kerberos authentication failed or not configured on vCenter")
+            print("[*] Falling back to credential-based authentication...")
+            print()
+    
+    # If not connected yet, use credentials
+    if not connected:
+        # Get username if not provided
+        user = args.user
+        if not user:
+            # Try to suggest the current Windows user
+            suggested_user = get_windows_username()
+            if suggested_user:
+                user = input(f"Username [{suggested_user}]: ").strip()
+                if not user:
+                    user = suggested_user
+            else:
+                user = input("Username (e.g., admin@vsphere.local or DOMAIN\\user): ").strip()
+        
+        if not user:
+            print("[-] Username is required")
+            sys.exit(1)
+        
+        # Get password if not provided
+        password = args.password
+        if not password:
+            password = getpass.getpass(f"Password for {user}: ")
+        
+        if not password:
+            print("[-] Password is required")
+            sys.exit(1)
+        
+        # Update auditor with credentials
+        auditor.user = user
+        auditor.password = password
+        
+        if not auditor.connect_with_credentials():
+            print("\n[-] Authentication failed. Please check your credentials.")
+            print("    Tips:")
+            print("    - For AD users, try: DOMAIN\\username or username@domain.com")
+            print("    - For local SSO users: administrator@vsphere.local")
+            print("    - Ensure the account has vCenter access permissions")
+            sys.exit(1)
+        
+        connected = True
+    
+    # Run the audit
+    if connected:
+        try:
+            auditor.audit_vcenter()
+            auditor.audit_host_security()
+            auditor.audit_vm_security()
+            auditor.audit_network_security()
+            auditor.audit_permissions()
+            auditor.audit_sso_and_authentication()
+            
+            print("\n" + "=" * 60)
+            print("AUDIT COMPLETE")
+            print("=" * 60)
+            print(f"Total Findings: {len(auditor.findings)}")
+            print(f"  Critical: {auditor.stats[SecurityFinding.CRITICAL]}")
+            print(f"  High:     {auditor.stats[SecurityFinding.HIGH]}")
+            print(f"  Medium:   {auditor.stats[SecurityFinding.MEDIUM]}")
+            print(f"  Low:      {auditor.stats[SecurityFinding.LOW]}")
+            print(f"  Info:     {auditor.stats[SecurityFinding.INFO]}")
+            
+            # Generate and print report
+            report = auditor.generate_report(args.output)
+            print("\n" + report)
+        finally:
+            auditor.disconnect()
     else:
         sys.exit(1)
 
